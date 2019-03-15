@@ -1,0 +1,310 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Select a VPC that allows instances access to the Internet.
+    Default: vpc-953ae1f0
+  SubnetId:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: Select at two subnets in your selected VPC.
+    Default: 'subnet-6c50801b,subnet-6712a002,subnet-f9630da2'
+  ContainerCpu:
+    Type: Number
+    Description: >-
+      Amount of CPU for the container - options available:
+      https://aws.amazon.com/fargate/pricing/
+    Default: 256
+    MinValue: 256
+    MaxValue: 4096
+    ConstraintDescription: >-
+      Value must be between 256 and 4096 - see:
+      https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html#task_size
+  ContainerMemory:
+    Type: Number
+    Description: >-
+      Amount of memory for the container - options available:
+      https://aws.amazon.com/fargate/pricing/
+    Default: 512
+    MinValue: 512
+    MaxValue: 30720
+    ConstraintDescription: >-
+      Value must be between 512 and 30720 - see:
+      https://aws.amazon.com/fargate/pricing/
+  ImgSvc10001:
+    Description: Service 10001 Docker Image
+    Type: String
+    Default: 'dicksonyue/aws-app-svc-10001:v2'
+Resources:
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Join
+        - ''
+        - - !Ref 'AWS::StackName'
+          - '-ECSCluster'
+  EcsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !Ref VpcId
+  EcsSecurityGroupHTTPinbound:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref EcsSecurityGroup
+      IpProtocol: tcp
+      FromPort: '80'
+      ToPort: '80'
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupALBports:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref EcsSecurityGroup
+      IpProtocol: tcp
+      FromPort: '31000'
+      ToPort: '61000'
+      SourceSecurityGroupId: !Ref EcsSecurityGroup
+  EcsSecurityGroupTaskports:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref EcsSecurityGroup
+      IpProtocol: tcp
+      FromPort: '8080'
+      ToPort: '8080'
+      SourceSecurityGroupId: !Ref EcsSecurityGroup
+  CloudwatchLogsGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Join
+        - '-'
+        - - ECSLogGroup
+          - !Ref 'AWS::StackName'
+      RetentionInDays: 14
+  ECSALB:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Name: !Join
+        - ''
+        - - !Ref 'AWS::StackName'
+          - '-ECSALB'
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '30'
+      Subnets: !Ref SubnetId
+      SecurityGroups:
+        - !Ref EcsSecurityGroup
+  ALBListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    DependsOn: ECSServiceRole
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ECSTG10001
+      LoadBalancerArn: !Ref ECSALB
+      Port: '80'
+      Protocol: HTTP
+  ECSALBListenerRule:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    DependsOn: ALBListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ECSTG10001
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /
+      ListenerArn: !Ref ALBListener
+      Priority: 1
+  ECSTG10001:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    DependsOn: ECSALB
+    Properties:
+      VpcId: !Ref VpcId
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: !Join
+        - ''
+        - - !Ref 'AWS::StackName'
+          - '-ECSTG10001'
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '10'
+  TaskDef10001:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: !Join
+        - ''
+        - - !Ref 'AWS::StackName'
+          - '-task-10001'
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt
+        - TaskExecutionRole
+        - Arn
+      ContainerDefinitions:
+        - Name: app-container-10001
+          Cpu: '1'
+          Essential: 'true'
+          Image: !Ref ImgSvc10001
+          Memory: '200'
+          Command:
+            - npm
+            - start
+          Environment:
+            - Name: ISFARGATE
+              Value: 'true'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: !Join
+                - ''
+                - - !Ref 'AWS::StackName'
+                  - '-task-10001'
+          PortMappings:
+            - ContainerPort: 8080
+    DependsOn:
+      - CloudwatchLogsGroup
+      - TaskExecutionRole
+  Svc10001:
+    Type: 'AWS::ECS::Service'
+    DependsOn:
+      - ALBListener
+      - TaskDef10001
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: '1'
+      LaunchType: FARGATE
+      TaskDefinition: !Ref TaskDef10001
+      LoadBalancers:
+        - ContainerName: app-container-10001
+          ContainerPort: '8080'
+          TargetGroupArn: !Ref ECSTG10001
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref EcsSecurityGroup
+          Subnets:
+            - !Select
+              - 0
+              - !Ref SubnetId
+            - !Select
+              - 1
+              - !Ref SubnetId
+            - !Select
+              - 2
+              - !Ref SubnetId
+      ServiceName: !Join
+        - ''
+        - - !Ref 'AWS::StackName'
+          - '-svc-10001'
+  ECSServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+                  - 'elasticloadbalancing:DeregisterTargets'
+                  - 'elasticloadbalancing:Describe*'
+                  - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+                  - 'elasticloadbalancing:RegisterTargets'
+                  - 'ec2:Describe*'
+                  - 'ec2:AuthorizeSecurityGroupIngress'
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:GetRepositoryPolicy'
+                  - 'ecr:DescribeRepositories'
+                  - 'ecr:ListImages'
+                  - 'ecr:DescribeImages'
+                  - 'ecr:BatchGetImage'
+                Resource: '*'
+  TaskExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+  EC2Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:CreateCluster'
+                  - 'ecs:DeregisterContainerInstance'
+                  - 'ecs:DiscoverPollEndpoint'
+                  - 'ecs:Poll'
+                  - 'ecs:RegisterContainerInstance'
+                  - 'ecs:StartTelemetrySession'
+                  - 'ecs:Submit*'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:GetRepositoryPolicy'
+                  - 'ecr:DescribeRepositories'
+                  - 'ecr:ListImages'
+                  - 'ecr:DescribeImages'
+                  - 'ecr:BatchGetImage'
+                Resource: '*'
+Outputs:
+  TaskDef10001:
+    Value: !Ref TaskDef10001
+  Svc10001:
+    Value: !Ref Svc10001
+  ECSCluster:
+    Value: !Ref ECSCluster
+  ECSALB:
+    Description: Your ALB DNS URL
+    Value: !Join
+      - ''
+      - - !GetAtt
+          - ECSALB
+          - DNSName

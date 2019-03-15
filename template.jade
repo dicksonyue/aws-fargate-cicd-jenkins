@@ -1,0 +1,46 @@
+doctype html
+html(lang="en")
+  head
+    title ECS
+    link(href='css/style.css', rel='stylesheet')
+  body
+  h2(align='center') AWS HK 2019 - Feb
+  h3(align='center') ECS - SVC 10001 12:09
+
+  table(class='pnlmain')
+    tr
+      td(class='pnlaz')
+        div(class='pnlenv')
+          if showaza
+            div(class='pnlec2')
+              div(class='pnlcontainer')
+                img(src='images/crane-transporting-container.svg',class='icon-container')
+                div(class='pnlec2count')= 'vote: ' + maintainer.nextid
+              div(class='pnlec2instanceid')= 'instance-id: ' + maintainer.instanceid
+              div(class='pnlec2az')= 'availability-zone: ' + maintainer.availabilityzone
+              div(class='pnlec2')
+                img(src='images/Compute_AmazonEC2_instance.svg',class='icon-ec2')
+      td(class='pnlaz')
+        div(class='pnlenv')
+          if showazb
+            div(class='pnlec2')
+              div(class='pnlcontainer')
+                img(src='images/crane-transporting-container.svg',class='icon-container')
+                div(class='pnlec2count')= 'vote: ' + maintainer.nextid
+              div(class='pnlec2instanceid')= 'instance-id: ' + maintainer.instanceid
+              div(class='pnlec2az')= 'availability-zone: ' + maintainer.availabilityzone
+              div(class='pnlec2')
+                img(src='images/Compute_AmazonEC2_instance.svg',class='icon-ec2')
+
+  table(class='pnlmain')
+
+    tr
+      td
+        img(src='images/logo.png')
+
+    tr
+      td(class='pnlicon') Icons made by&nbsp;
+        a(href="http://www.freepik.com", title="Freepik") Freepik&nbsp;from&nbsp;
+        a(href="http://www.flaticon.com", title="Flaticon") www.flaticon.com&nbsp;
+        is licensed by&nbsp;
+        a(href="http://creativecommons.org/licenses/by/3.0/", title="Creative Commons BY 3.0") CC 3.0 BY

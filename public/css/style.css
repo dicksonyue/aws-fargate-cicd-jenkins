@@ -1,0 +1,48 @@
+body{
+  background: black;
+  color: white;
+  font-family: arial;
+}
+.icon-ec2{
+  width: 100%;
+  margin-bottom: -20%;
+  margin-top: -20%;
+}
+.icon-container{
+  width: 30%;
+  margin-top: 15%;
+}
+.pnlmain{
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+  width: 80%;
+}
+.pnlicon{
+  font-size: 12px;
+  padding-top: 20px;
+}
+a:link, a:hover, a:visited{
+  color: white;
+}
+.pnlaz{
+  position: relative;
+  background-color: #555555;
+  width: 50%;
+  border: 3px dashed #e47911;
+  border-radius: 20px;
+
+}
+.pnlenv{
+  margin: 1px;
+  padding-top: 5%;
+  padding-bottom: 5%;
+}
+.pnlcontainer{
+  position: absolute;
+  width: 100%;
+}
+.pnlec2count{
+  font-size: 24px;
+
+}
